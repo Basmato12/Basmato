@@ -136,7 +136,7 @@ async function addSampleProducts() {
             oldPrice: 120.00,
             category: "top",
             description: "Elegant dining chair with premium finish",
-            image: "fa-couch",
+            image: "fa-chair",
             badge: "Sale",
             features: ["Ergonomic design", "Easy to clean", "Sturdy construction"],
             inStock: true,
@@ -148,7 +148,7 @@ async function addSampleProducts() {
             price: 499.00,
             category: "sale",
             description: "Comfortable queen size bed with storage",
-            image: "fa-couch",
+            image: "fa-bed",
             badge: "New",
             features: ["Storage drawers", "Premium wood", "Easy assembly"],
             inStock: true,
@@ -168,7 +168,6 @@ async function addSampleProducts() {
 }
 
 // Display products
-// Display products
 function displayProducts(products) {
     const productsContainer = document.getElementById('products-container');
     
@@ -180,7 +179,7 @@ function displayProducts(products) {
     productsContainer.innerHTML = products.map(product => `
         <div class="product-card" data-category="${product.category}">
             <div class="product-img">
-                <img src="${product.image}" alt="${product.name}" onerror="handleImageError(this)">
+                <i class="fas ${product.image || 'fa-cube'}"></i>
                 ${product.badge ? `<span class="product-badge">${product.badge}</span>` : ''}
             </div>
             <div class="product-content">
@@ -200,7 +199,6 @@ function displayProducts(products) {
         </div>
     `).join('');
 
-    // Add event listeners
     document.querySelectorAll('.add-to-cart').forEach(button => {
         button.addEventListener('click', addToCart);
     });
@@ -212,43 +210,6 @@ function displayProducts(products) {
     setupProductFiltering(products);
 }
 
-// Handle broken images
-function handleImageError(img) {
-    console.log('Image failed to load:', img.src);
-    img.style.display = 'none';
-    
-    // Create fallback icon
-    const fallback = document.createElement('div');
-    fallback.className = 'fallback-icon';
-    fallback.innerHTML = '<i class="fas fa-couch"></i>';
-    
-    img.parentNode.appendChild(fallback);
-}
-
-    // Add event listeners
-    document.querySelectorAll('.add-to-cart').forEach(button => {
-        button.addEventListener('click', addToCart);
-    });
-
-    document.querySelectorAll('.wishlist-btn').forEach(button => {
-        button.addEventListener('click', toggleWishlist);
-    });
-
-    setupProductFiltering(products);
-}
-
-// Handle broken images
-function handleImageError(img) {
-    console.log('Image failed to load:', img.src);
-    img.style.display = 'none';
-    
-    // Create fallback icon
-    const fallback = document.createElement('div');
-    fallback.className = 'fallback-icon';
-    fallback.innerHTML = '<i class="fas fa-couch"></i>';
-    
-    img.parentNode.appendChild(fallback);
-}
 // Add to cart function
 async function addToCart(e) {
     const productId = e.target.getAttribute('data-id');
