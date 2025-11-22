@@ -178,4 +178,172 @@ function displayProducts(products) {
             </div>
             <div class="product-content">
                 <h3>${product.name}</h3>
-                <
+                <p>${product.description}</p>
+                <span class="product-price">
+                    $${product.price.toFixed(2)}
+                    ${product.oldPrice ? `<span class="old-price">$${product.oldPrice.toFixed(2)}</span>` : ''}
+                </span>
+                <div class="product-actions">
+                    <button class="add-to-cart" data-id="${product.id}">Add to Cart</button>
+                    <button class="wishlist-btn ${isInWishlist(product.id) ? 'active' : ''}" data-id="${product.id}">
+                        <i class="fas fa-heart"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    // Add event listeners to product buttons
+    document.querySelectorAll('.add-to-cart').forEach(button => {
+        button.addEventListener('click', addToCart);
+    });
+
+    document.querySelectorAll('.wishlist-btn').forEach(button => {
+        button.addEventListener('click', toggleWishlist);
+    });
+
+    // Setup product filtering
+    setupProductFiltering(products);
+}
+
+function setupProductFiltering(allProducts) {
+    const filterButtons = document.querySelectorAll('.filter-btn');
+
+    filterButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Update active button
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Filter products
+            const filterValue = button.getAttribute('data-filter');
+            
+            if (filterValue === 'all') {
+                displayProducts(allProducts);
+            } else {
+                const filteredProducts = allProducts.filter(product => product.category === filterValue);
+                displayProducts(filteredProducts);
+            }
+        });
+    });
+}
+
+// Cart functionality
+function addToCart(e) {
+    const productId = parseInt(e.target.getAttribute('data-id'));
+    const product = sampleProducts.find(p => p.id === productId);
+    
+    if (product) {
+        // Check if product already in cart
+        const existingItem = cart.find(item => item.id === productId);
+        
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                image: product.image,
+                quantity: 1
+            });
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('cart', JSON.stringify(cart));
+        
+        // Update cart count
+        updateCartCount();
+        
+        // Show notification
+        showCartNotification(product.name);
+    }
+}
+
+function updateCartCount() {
+    const totalItems = cart.reduce((total, item) => total + item.quantity, 0);
+    const cartCountElements = document.querySelectorAll('.cart-count');
+    cartCountElements.forEach(element => {
+        element.textContent = totalItems;
+    });
+}
+
+function showCartNotification(productName) {
+    const notification = document.getElementById('cart-notification');
+    notification.textContent = `${productName} added to cart!`;
+    notification.classList.add('show');
+    
+    setTimeout(() => {
+        notification.classList.remove('show');
+    }, 3000);
+}
+
+// Wishlist functionality
+function toggleWishlist(e) {
+    const productId = parseInt(e.currentTarget.getAttribute('data-id'));
+    const product = sampleProducts.find(p => p.id === productId);
+    const wishlistBtn = e.currentTarget;
+    
+    if (product) {
+        if (isInWishlist(productId)) {
+            // Remove from wishlist
+            wishlist = wishlist.filter(item => item.id !== productId);
+            wishlistBtn.classList.remove('active');
+        } else {
+            // Add to wishlist
+            wishlist.push({
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                image: product.image
+            });
+            wishlistBtn.classList.add('active');
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('wishlist', JSON.stringify(wishlist));
+        
+        // Update wishlist count
+        updateWishlistCount();
+    }
+}
+
+function isInWishlist(productId) {
+    return wishlist.some(item => item.id === productId);
+}
+
+function updateWishlistCount() {
+    // This would update a wishlist counter if we had one in the UI
+    console.log('Wishlist items:', wishlist.length);
+}
+
+// Newsletter form
+function handleNewsletterSubmit(e) {
+    e.preventDefault();
+    const email = e.target.querySelector('input[type="email"]').value;
+    
+    // In a real app, you would send this to your server
+    alert(`Thank you for subscribing with: ${email}`);
+    e.target.reset();
+}
+
+// Utility function to get URL parameters
+function getUrlParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
+// Initialize any page-specific functionality based on URL
+function initializePageFeatures() {
+    const category = getUrlParameter('category');
+    if (category) {
+        // Filter products by category if category parameter exists
+        const filteredProducts = sampleProducts.filter(product => 
+            product.category === category
+        );
+        displayProducts(filteredProducts);
+    }
+}
+
+// Call this when the page loads
+initializePageFeatures();
