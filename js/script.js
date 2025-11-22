@@ -1,167 +1,173 @@
-// Main JavaScript for Davici Furniture Website
-
-// Sample product data (will be replaced with Firebase later)
-const sampleProducts = [
-    {
-        id: 1,
-        name: "Modern Sofa Set",
-        price: 100.00,
-        category: "new",
-        description: "Comfortable modern sofa set for your living room",
-        image: "fa-couch",
-        badge: "New"
-    },
-    {
-        id: 2,
-        name: "Dining Chair",
-        price: 15.00,
-        oldPrice: 20.00,
-        category: "top",
-        description: "Elegant dining chair with premium finish",
-        image: "fa-chair",
-        badge: "Popular"
-    },
-    {
-        id: 3,
-        name: "Queen Size Bed",
-        price: 15.00,
-        oldPrice: 30.00,
-        category: "sale",
-        description: "Comfortable queen size bed with storage",
-        image: "fa-bed",
-        badge: "Sale"
-    },
-    {
-        id: 4,
-        name: "Dining Table",
-        price: 120.00,
-        category: "new",
-        description: "Modern dining table with glass top",
-        image: "fa-table",
-        badge: "New"
-    },
-    {
-        id: 5,
-        name: "Office Desk",
-        price: 89.99,
-        category: "top",
-        description: "Ergonomic office desk with storage",
-        image: "fa-desktop",
-        badge: "Popular"
-    },
-    {
-        id: 6,
-        name: "Bookshelf",
-        price: 75.00,
-        oldPrice: 90.00,
-        category: "sale",
-        description: "Modern bookshelf with 5 shelves",
-        image: "fa-book",
-        badge: "Sale"
-    }
-];
-
-// Global variables
-let cart = JSON.parse(localStorage.getItem('cart')) || [];
-let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
-
-// DOM Content Loaded
+// Main application logic
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
 });
 
-// Initialize the application
-function initializeApp() {
-    setupEventListeners();
-    loadProducts();
-    updateCartCount();
-    updateWishlistCount();
+async function initializeApp() {
+    try {
+        // Set up auth state listener
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadUserData(user.uid);
+                updateUIForLoggedInUser(user);
+            } else {
+                currentUser = null;
+                userCart = JSON.parse(localStorage.getItem('guestCart')) || [];
+                updateUIForLoggedOutUser();
+            }
+            updateCartCount();
+        });
+
+        await loadProductsFromFirebase();
+        setupEventListeners();
+    } catch (error) {
+        console.error("Error initializing app:", error);
+        showError("Failed to load products. Please refresh the page.");
+    }
 }
 
-// Setup all event listeners
-function setupEventListeners() {
-    // Mobile menu toggle
-    document.querySelector('.mobile-menu-btn').addEventListener('click', toggleMobileMenu);
+// Load products from Firebase
+async function loadProductsFromFirebase() {
+    const productsContainer = document.getElementById('products-container');
     
-    // Search functionality
-    document.getElementById('search-toggle').addEventListener('click', toggleSearch);
-    document.getElementById('search-icon').addEventListener('click', toggleSearch);
-    document.getElementById('close-search').addEventListener('click', toggleSearch);
-    document.querySelector('.search-btn').addEventListener('click', performSearch);
-    document.getElementById('search-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            performSearch();
+    try {
+        const querySnapshot = await db.collection('products').get();
+        allProducts = [];
+        
+        querySnapshot.forEach((doc) => {
+            allProducts.push({ 
+                id: doc.id, 
+                ...doc.data() 
+            });
+        });
+
+        document.getElementById('products-count').textContent = allProducts.length + '+';
+
+        if (allProducts.length === 0) {
+            await addSampleProducts();
+            await loadProductsFromFirebase();
+            return;
+        }
+
+        displayProducts(allProducts);
+        
+    } catch (error) {
+        console.error("Error loading products:", error);
+        showError("Error loading products from database.");
+    }
+}
+
+// Load user data from Firestore
+async function loadUserData(userId) {
+    try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            userCart = userData.cart || [];
+            // Merge guest cart with user cart
+            const guestCart = JSON.parse(localStorage.getItem('guestCart')) || [];
+            if (guestCart.length > 0) {
+                userCart = mergeCarts(userCart, guestCart);
+                await saveUserCart(userId, userCart);
+                localStorage.removeItem('guestCart');
+            }
+        } else {
+            // Create user document if it doesn't exist
+            await db.collection('users').doc(userId).set({
+                name: currentUser.displayName || currentUser.email,
+                email: currentUser.email,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                cart: []
+            });
+        }
+    } catch (error) {
+        console.error("Error loading user data:", error);
+    }
+}
+
+// Merge guest cart with user cart
+function mergeCarts(userCart, guestCart) {
+    const mergedCart = [...userCart];
+    
+    guestCart.forEach(guestItem => {
+        const existingItem = mergedCart.find(item => item.id === guestItem.id);
+        if (existingItem) {
+            existingItem.quantity += guestItem.quantity;
+        } else {
+            mergedCart.push(guestItem);
         }
     });
     
-    // Newsletter form
-    document.getElementById('newsletter-form').addEventListener('submit', handleNewsletterSubmit);
-    
-    // Smooth scrolling for anchor links
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }
+    return mergedCart;
+}
+
+// Save user cart to Firestore
+async function saveUserCart(userId, cart) {
+    try {
+        await db.collection('users').doc(userId).update({
+            cart: cart,
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         });
-    });
-}
-
-// Mobile menu functionality
-function toggleMobileMenu() {
-    const nav = document.querySelector('nav');
-    nav.classList.toggle('active');
-    
-    // Update menu icon
-    const menuIcon = document.querySelector('.mobile-menu-btn i');
-    if (nav.classList.contains('active')) {
-        menuIcon.classList.remove('fa-bars');
-        menuIcon.classList.add('fa-times');
-    } else {
-        menuIcon.classList.remove('fa-times');
-        menuIcon.classList.add('fa-bars');
+    } catch (error) {
+        console.error("Error saving user cart:", error);
     }
 }
 
-// Search functionality
-function toggleSearch() {
-    const searchBar = document.getElementById('search-bar');
-    searchBar.classList.toggle('active');
-    
-    if (searchBar.classList.contains('active')) {
-        document.getElementById('search-input').focus();
+// Add sample products to Firestore
+async function addSampleProducts() {
+    const sampleProducts = [
+        {
+            name: "Modern Sofa Set",
+            price: 299.00,
+            oldPrice: 399.00,
+            category: "new",
+            description: "Comfortable modern sofa set for your living room",
+            image: "fa-couch",
+            badge: "Popular",
+            features: ["Premium fabric", "Solid wood frame", "High-density foam"],
+            inStock: true,
+            rating: 4.5,
+            reviewCount: 24
+        },
+        {
+            name: "Dining Chair",
+            price: 89.00,
+            oldPrice: 120.00,
+            category: "top",
+            description: "Elegant dining chair with premium finish",
+            image: "fa-chair",
+            badge: "Sale",
+            features: ["Ergonomic design", "Easy to clean", "Sturdy construction"],
+            inStock: true,
+            rating: 4.2,
+            reviewCount: 18
+        },
+        {
+            name: "Queen Size Bed",
+            price: 499.00,
+            category: "sale",
+            description: "Comfortable queen size bed with storage",
+            image: "fa-bed",
+            badge: "New",
+            features: ["Storage drawers", "Premium wood", "Easy assembly"],
+            inStock: true,
+            rating: 4.7,
+            reviewCount: 32
+        }
+    ];
+
+    try {
+        for (const product of sampleProducts) {
+            await db.collection('products').add(product);
+        }
+        console.log("Sample products added to Firebase");
+    } catch (error) {
+        console.error("Error adding sample products:", error);
     }
 }
 
-function performSearch() {
-    const searchTerm = document.getElementById('search-input').value.trim();
-    if (searchTerm) {
-        // In a real app, this would search your database
-        alert(`Searching for: ${searchTerm}`);
-        // For now, we'll just filter the displayed products
-        filterProductsBySearch(searchTerm);
-        toggleSearch();
-    }
-}
-
-function filterProductsBySearch(searchTerm) {
-    const filteredProducts = sampleProducts.filter(product => 
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    displayProducts(filteredProducts);
-}
-
-// Product loading and display
-function loadProducts() {
-    displayProducts(sampleProducts);
-}
-
+// Display products
 function displayProducts(products) {
     const productsContainer = document.getElementById('products-container');
     
@@ -173,7 +179,7 @@ function displayProducts(products) {
     productsContainer.innerHTML = products.map(product => `
         <div class="product-card" data-category="${product.category}">
             <div class="product-img">
-                <i class="fas ${product.image}"></i>
+                <i class="fas ${product.image || 'fa-cube'}"></i>
                 ${product.badge ? `<span class="product-badge">${product.badge}</span>` : ''}
             </div>
             <div class="product-content">
@@ -185,15 +191,14 @@ function displayProducts(products) {
                 </span>
                 <div class="product-actions">
                     <button class="add-to-cart" data-id="${product.id}">Add to Cart</button>
-                    <button class="wishlist-btn ${isInWishlist(product.id) ? 'active' : ''}" data-id="${product.id}">
-                        <i class="fas fa-heart"></i>
+                    <button class="wishlist-btn">
+                        <i class="far fa-heart"></i>
                     </button>
                 </div>
             </div>
         </div>
     `).join('');
 
-    // Add event listeners to product buttons
     document.querySelectorAll('.add-to-cart').forEach(button => {
         button.addEventListener('click', addToCart);
     });
@@ -202,45 +207,21 @@ function displayProducts(products) {
         button.addEventListener('click', toggleWishlist);
     });
 
-    // Setup product filtering
     setupProductFiltering(products);
 }
 
-function setupProductFiltering(allProducts) {
-    const filterButtons = document.querySelectorAll('.filter-btn');
-
-    filterButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Update active button
-            filterButtons.forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            
-            // Filter products
-            const filterValue = button.getAttribute('data-filter');
-            
-            if (filterValue === 'all') {
-                displayProducts(allProducts);
-            } else {
-                const filteredProducts = allProducts.filter(product => product.category === filterValue);
-                displayProducts(filteredProducts);
-            }
-        });
-    });
-}
-
-// Cart functionality
-function addToCart(e) {
-    const productId = parseInt(e.target.getAttribute('data-id'));
-    const product = sampleProducts.find(p => p.id === productId);
+// Add to cart function
+async function addToCart(e) {
+    const productId = e.target.getAttribute('data-id');
+    const product = allProducts.find(p => p.id === productId);
     
     if (product) {
-        // Check if product already in cart
-        const existingItem = cart.find(item => item.id === productId);
+        const existingItem = userCart.find(item => item.id === productId);
         
         if (existingItem) {
             existingItem.quantity += 1;
         } else {
-            cart.push({
+            userCart.push({
                 id: product.id,
                 name: product.name,
                 price: product.price,
@@ -249,22 +230,182 @@ function addToCart(e) {
             });
         }
         
-        // Save to localStorage
-        localStorage.setItem('cart', JSON.stringify(cart));
+        if (currentUser) {
+            await saveUserCart(currentUser.uid, userCart);
+        } else {
+            localStorage.setItem('guestCart', JSON.stringify(userCart));
+        }
         
-        // Update cart count
         updateCartCount();
-        
-        // Show notification
         showCartNotification(product.name);
     }
 }
 
+// Update cart count
 function updateCartCount() {
-    const totalItems = cart.reduce((total, item) => total + item.quantity, 0);
-    const cartCountElements = document.querySelectorAll('.cart-count');
-    cartCountElements.forEach(element => {
-        element.textContent = totalItems;
+    const totalItems = userCart.reduce((total, item) => total + item.quantity, 0);
+    document.querySelector('.cart-count').textContent = totalItems;
+}
+
+// Authentication functions
+async function loginUser(email, password) {
+    try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        return userCredential;
+    } catch (error) {
+        throw error;
+    }
+}
+
+async function registerUser(name, email, password) {
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        await userCredential.user.updateProfile({
+            displayName: name
+        });
+        await db.collection('users').doc(userCredential.user.uid).set({
+            name: name,
+            email: email,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            cart: []
+        });
+        return userCredential;
+    } catch (error) {
+        throw error;
+    }
+}
+
+async function logoutUser() {
+    try {
+        if (currentUser) {
+            localStorage.setItem('guestCart', JSON.stringify(userCart));
+        }
+        await auth.signOut();
+    } catch (error) {
+        console.error("Error signing out:", error);
+    }
+}
+
+// Update UI based on auth state
+function updateUIForLoggedInUser(user) {
+    document.getElementById('auth-link').style.display = 'none';
+    document.getElementById('user-dropdown').style.display = 'inline-block';
+    document.getElementById('user-name').textContent = user.displayName || user.email;
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('auth-link').style.display = 'inline-block';
+    document.getElementById('user-dropdown').style.display = 'none';
+}
+
+// Event listeners
+function setupEventListeners() {
+    // Mobile menu
+    document.querySelector('.mobile-menu-btn').addEventListener('click', function() {
+        const nav = document.querySelector('nav');
+        nav.classList.toggle('active');
+        
+        const menuIcon = document.querySelector('.mobile-menu-btn i');
+        if (nav.classList.contains('active')) {
+            menuIcon.classList.remove('fa-bars');
+            menuIcon.classList.add('fa-times');
+        } else {
+            menuIcon.classList.remove('fa-times');
+            menuIcon.classList.add('fa-bars');
+        }
+    });
+
+    // Auth modal
+    document.getElementById('auth-link').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.getElementById('auth-modal').classList.add('active');
+    });
+
+    document.getElementById('close-auth').addEventListener('click', function() {
+        document.getElementById('auth-modal').classList.remove('active');
+    });
+
+    // Auth tabs
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById(this.getAttribute('data-tab') + '-form').classList.add('active');
+        });
+    });
+
+    // Login form
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        
+        try {
+            await loginUser(email, password);
+            document.getElementById('auth-modal').classList.remove('active');
+            this.reset();
+            document.getElementById('login-error').classList.remove('show');
+        } catch (error) {
+            document.getElementById('login-error').textContent = error.message;
+            document.getElementById('login-error').classList.add('show');
+        }
+    });
+
+    // Register form
+    document.getElementById('register-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const name = document.getElementById('register-name').value;
+        const email = document.getElementById('register-email').value;
+        const password = document.getElementById('register-password').value;
+        const confirm = document.getElementById('register-confirm').value;
+        
+        if (password !== confirm) {
+            document.getElementById('register-error').textContent = "Passwords don't match";
+            document.getElementById('register-error').classList.add('show');
+            return;
+        }
+        
+        try {
+            await registerUser(name, email, password);
+            document.getElementById('auth-modal').classList.remove('active');
+            this.reset();
+            document.getElementById('register-error').classList.remove('show');
+        } catch (error) {
+            document.getElementById('register-error').textContent = error.message;
+            document.getElementById('register-error').classList.add('show');
+        }
+    });
+
+    // Logout
+    document.getElementById('logout-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        logoutUser();
+    });
+
+    // Newsletter
+    document.getElementById('newsletter-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const email = this.querySelector('input[type="email"]').value;
+        alert(`Thank you for subscribing with: ${email}`);
+        this.reset();
+    });
+}
+
+function setupProductFiltering(products) {
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    filterButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            const filterValue = button.getAttribute('data-filter');
+            if (filterValue === 'all') {
+                displayProducts(products);
+            } else {
+                const filteredProducts = products.filter(product => product.category === filterValue);
+                displayProducts(filteredProducts);
+            }
+        });
     });
 }
 
@@ -272,78 +413,24 @@ function showCartNotification(productName) {
     const notification = document.getElementById('cart-notification');
     notification.textContent = `${productName} added to cart!`;
     notification.classList.add('show');
-    
     setTimeout(() => {
         notification.classList.remove('show');
     }, 3000);
 }
 
-// Wishlist functionality
 function toggleWishlist(e) {
-    const productId = parseInt(e.currentTarget.getAttribute('data-id'));
-    const product = sampleProducts.find(p => p.id === productId);
     const wishlistBtn = e.currentTarget;
-    
-    if (product) {
-        if (isInWishlist(productId)) {
-            // Remove from wishlist
-            wishlist = wishlist.filter(item => item.id !== productId);
-            wishlistBtn.classList.remove('active');
-        } else {
-            // Add to wishlist
-            wishlist.push({
-                id: product.id,
-                name: product.name,
-                price: product.price,
-                image: product.image
-            });
-            wishlistBtn.classList.add('active');
-        }
-        
-        // Save to localStorage
-        localStorage.setItem('wishlist', JSON.stringify(wishlist));
-        
-        // Update wishlist count
-        updateWishlistCount();
-    }
+    wishlistBtn.classList.toggle('active');
+    wishlistBtn.querySelector('i').classList.toggle('far');
+    wishlistBtn.querySelector('i').classList.toggle('fas');
 }
 
-function isInWishlist(productId) {
-    return wishlist.some(item => item.id === productId);
+function showError(message) {
+    const productsContainer = document.getElementById('products-container');
+    productsContainer.innerHTML = `
+        <div class="error-message">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p>${message}</p>
+        </div>
+    `;
 }
-
-function updateWishlistCount() {
-    // This would update a wishlist counter if we had one in the UI
-    console.log('Wishlist items:', wishlist.length);
-}
-
-// Newsletter form
-function handleNewsletterSubmit(e) {
-    e.preventDefault();
-    const email = e.target.querySelector('input[type="email"]').value;
-    
-    // In a real app, you would send this to your server
-    alert(`Thank you for subscribing with: ${email}`);
-    e.target.reset();
-}
-
-// Utility function to get URL parameters
-function getUrlParameter(name) {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get(name);
-}
-
-// Initialize any page-specific functionality based on URL
-function initializePageFeatures() {
-    const category = getUrlParameter('category');
-    if (category) {
-        // Filter products by category if category parameter exists
-        const filteredProducts = sampleProducts.filter(product => 
-            product.category === category
-        );
-        displayProducts(filteredProducts);
-    }
-}
-
-// Call this when the page loads
-initializePageFeatures();
