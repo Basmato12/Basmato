@@ -224,6 +224,31 @@ function handleImageError(img) {
     
     img.parentNode.appendChild(fallback);
 }
+
+    // Add event listeners
+    document.querySelectorAll('.add-to-cart').forEach(button => {
+        button.addEventListener('click', addToCart);
+    });
+
+    document.querySelectorAll('.wishlist-btn').forEach(button => {
+        button.addEventListener('click', toggleWishlist);
+    });
+
+    setupProductFiltering(products);
+}
+
+// Handle broken images
+function handleImageError(img) {
+    console.log('Image failed to load:', img.src);
+    img.style.display = 'none';
+    
+    // Create fallback icon
+    const fallback = document.createElement('div');
+    fallback.className = 'fallback-icon';
+    fallback.innerHTML = '<i class="fas fa-couch"></i>';
+    
+    img.parentNode.appendChild(fallback);
+}
 // Add to cart function
 async function addToCart(e) {
     const productId = e.target.getAttribute('data-id');
