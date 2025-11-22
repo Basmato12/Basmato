@@ -8,7 +8,7 @@ const sampleProducts = [
         price: 100.00,
         category: "new",
         description: "Comfortable modern sofa set for your living room",
-        image: "image1.png",
+        image: "../image1.png",
         badge: "New"
     },
     {
